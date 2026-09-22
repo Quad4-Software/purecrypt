@@ -55,10 +55,10 @@ priv.public_key().verify(sig, b"message")
 
 ## Known limitations
 
-- No constant-time guarantees; Python semantics preclude them.
+- No constant-time guarantees. Python semantics preclude them.
 - Secret zeroization is best-effort (mutable buffers are wiped where
   practical, but interpreter copies are out of scope).
-- RSA PKCS#1 v1.5 decryption is inherently Bleichenbacher-prone; use
+- RSA PKCS#1 v1.5 decryption is inherently Bleichenbacher-prone. Use
   OAEP.
 - No X.509/TLS. That is a different and much larger problem.
 

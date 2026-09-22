@@ -49,7 +49,7 @@ def test_hkdf_rfc5869_case2() -> None:
 
 
 def test_hkdf_rfc5869_case3() -> None:
-    # zero-length salt and info; salt=None is equivalent per RFC
+    # zero-length salt and info. Passing salt=None is equivalent per RFC
     okm = kdf.hkdf("sha256", _b("0b" * 22), b"", b"", 42)
     assert okm == _b(
         "8da4e775a563c18f715f802a063c5a31"
@@ -228,7 +228,7 @@ def test_argon2id_reference_vector() -> None:
 
 
 def test_argon2_long_tag() -> None:
-    # tag_length 100 exercises the H' iterated path (RFC 9106 3.3);
+    # tag_length 100 exercises the H' iterated path (RFC 9106 3.3).
     # cross-verified against argon2-cffi
     tag = kdf.argon2(
         b"password",

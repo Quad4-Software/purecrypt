@@ -9,7 +9,7 @@ interop where native crypto is unavailable.
 AEAD notes: GCM nonces MUST be unique per key. Reusing a nonce with
 the same key destroys both confidentiality and authenticity (it leaks
 the GHASH key and the keystream). Nonce management is the caller's
-problem; this library deliberately does not track or detect reuse.
+problem. This library deliberately does not track or detect reuse.
 """
 
 from __future__ import annotations
@@ -257,7 +257,7 @@ def ecb_decrypt(key: bytes, data: bytes) -> bytes:
 
 
 def cbc_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
-    """CBC encrypt. Input must be block-aligned; pad with pkcs7_pad."""
+    """CBC encrypt. Input must be block-aligned. Pad with pkcs7_pad."""
     if len(iv) != BLOCK_SIZE:
         raise ValueError("CBC IV must be exactly 16 bytes")
     _require_aligned(data, "CBC plaintext", ValueError)
@@ -271,7 +271,7 @@ def cbc_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
 
 
 def cbc_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
-    """CBC decrypt. Returns raw plaintext; strip padding via pkcs7_unpad."""
+    """CBC decrypt. Returns raw plaintext. Strip padding via pkcs7_unpad."""
     if len(iv) != BLOCK_SIZE:
         raise InvalidCiphertext("CBC IV must be exactly 16 bytes")
     _require_aligned(data, "CBC ciphertext")
@@ -387,7 +387,7 @@ def gcm_encrypt(
 ) -> tuple[bytes, bytes]:
     """AES-GCM AEAD encryption (NIST SP 800-38D). Returns (ciphertext, tag).
 
-    NOT constant-time. The nonce MUST be unique per key; reuse is
+    NOT constant-time. The nonce MUST be unique per key. Reuse is
     catastrophic and is the caller's responsibility to prevent.
     """
     _check_key(key)
@@ -411,7 +411,7 @@ def gcm_decrypt(
 ) -> bytes:
     """AES-GCM AEAD decryption. Verifies the tag before releasing plaintext.
 
-    Raises InvalidTag on authentication failure; plaintext is never
+    Raises InvalidTag on authentication failure. Plaintext is never
     released for unauthenticated input.
     """
     _check_key(key)

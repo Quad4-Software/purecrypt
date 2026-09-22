@@ -20,7 +20,7 @@ universal primitive types, standalone EOC markers, nesting beyond a
 bounded depth, and trailing garbage after the top-level element.
 
 One deliberate deviation: DER also requires SET OF elements to be sorted
-by encoding. That ordering check is not enforced; key structures use
+by encoding. That ordering check is not enforced. Key structures use
 SEQUENCE everywhere, so this does not affect the intended consumers.
 """
 
@@ -51,7 +51,7 @@ class DerNode:
     """One decoded TLV.
 
     content holds the raw content octets. children holds the
-    decoded sub-elements when the constructed bit was set; it is empty
+    decoded sub-elements when the constructed bit was set. It is empty
     for primitive encodings.
     """
 
@@ -76,7 +76,7 @@ class DerNode:
 
 
 def _read_length(data: bytes, pos: int) -> tuple[int, int]:
-    """Read a DER length field; returns (length, next_pos)."""
+    """Read a DER length field. Returns (length, next_pos)."""
     if pos >= len(data):
         raise InvalidSerialization("truncated DER: missing length")
     first = data[pos]

@@ -14,12 +14,12 @@ Implements:
 * Curves: P-256 (secp256r1), P-384 (secp384r1), P-521 (secp521r1) and
   secp256k1. All have cofactor h = 1.
 * ECDH with mandatory peer-point validation: on-curve and in-subgroup
-  (n * P == infinity). This is the invalid-curve-attack surface; the
+  (n * P == infinity). This is the invalid-curve-attack surface. The
   checks are not optional.
 * ECDSA sign/verify with RFC 6979 deterministic nonces. Signatures are
   produced and consumed in DER form. Signing normalizes to low-s
   (BIP-62 style): verification still accepts the mathematically
-  equivalent (r, n - s) form because ECDSA is inherently malleable; the
+  equivalent (r, n - s) form because ECDSA is inherently malleable. The
   low-s policy only pins the canonical encoder output.
 * SEC1 uncompressed (and compressed, on parse) point format, SEC1
   ECPrivateKey PEM, PKCS#8 private and SubjectPublicKeyInfo public
@@ -237,9 +237,9 @@ def encode_point(
 
 
 def decode_point(curve: Curve, data: bytes) -> tuple[int, int]:
-    """Parse a SEC1 point; validates membership via validate_public_point.
+    """Parse a SEC1 point. Validates membership via validate_public_point.
 
-    Malformed encodings raise InvalidSerialization; well-formed
+    Malformed encodings raise InvalidSerialization. Well-formed
     encodings of points that fail validation (off-curve or wrong
     subgroup) raise InvalidKey.
     """
@@ -474,7 +474,7 @@ class ECPrivateKey:
 
         Normalizes to low-s (s > n/2 is replaced by n - s) as a canonical
         output policy. ECDSA remains mathematically malleable: (r, n - s)
-        always verifies; see the module docstring.
+        always verifies. See the module docstring.
         """
         curve = self.curve
         n = curve.n

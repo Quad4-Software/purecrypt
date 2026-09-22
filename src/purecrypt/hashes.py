@@ -3,7 +3,7 @@
 
 Convenience layer only: the real work is done by CPython's hashlib
 and hmac bindings. md5 and sha1 are exposed for legacy and protocol
-compatibility only; they are broken and must not be used for new
+compatibility only. They are broken and must not be used for new
 designs or anything security-relevant.
 """
 

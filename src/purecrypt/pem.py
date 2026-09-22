@@ -15,7 +15,7 @@ Accepted form:
 The BEGIN and END labels must match exactly. Only base64 characters may
 appear inside the armor: legacy headers (Proc-Type, DEK-Info, ...) are
 rejected. Free text before the BEGIN line or after the END line is
-ignored, matching common PEM practice; only the first block is decoded.
+ignored, matching common PEM practice. Only the first block is decoded.
 """
 
 import base64

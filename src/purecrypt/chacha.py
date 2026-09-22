@@ -9,7 +9,7 @@ WARNING: pure Python cannot provide constant-time guarantees. Every
 primitive in this module leaks timing information and must not be
 used in production. Nonce reuse with the same key is catastrophic:
 it leaks the keystream and forges the Poly1305 key. Nonce management
-is the caller's responsibility; nothing here tracks reuse.
+is the caller's responsibility. Nothing here tracks reuse.
 """
 
 from __future__ import annotations

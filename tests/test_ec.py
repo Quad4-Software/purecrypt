@@ -56,7 +56,7 @@ class TestRfc6979:
         key = ECPrivateKey(curve=P256, d=RFC6979_P256["x"])
         r, s = _dss(key.sign_ecdsa(message, hash_name="sha256"))
         assert r == RFC6979_P256[r_key]
-        # sign normalizes to low-s; the RFC value may be the high-s form
+        # sign normalizes to low-s. The RFC value may be the high-s form
         s_rfc = RFC6979_P256[s_key]
         assert s in (s_rfc, P256.n - s_rfc)
 

@@ -31,7 +31,7 @@ def xor_bytes(a: bytes, b: bytes) -> bytes:
 def ct_equal(a: bytes, b: bytes) -> bool:
     """Constant-time-ish byte comparison via hmac.compare_digest.
 
-    Pure Python cannot guarantee constant time; this is the best the
+    Pure Python cannot guarantee constant time. This is the best the
     language offers and avoids the obvious early-exit pitfalls.
     """
     return hmac.compare_digest(a, b)
@@ -40,7 +40,7 @@ def ct_equal(a: bytes, b: bytes) -> bool:
 def wipe(buf: bytearray) -> None:
     """Best-effort overwrite of mutable secret material.
 
-    CPython may keep other copies of the data alive elsewhere; this is
+    CPython may keep other copies of the data alive elsewhere. This is
     hygiene, not a guarantee.
     """
     for i in range(len(buf)):

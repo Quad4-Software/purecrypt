@@ -5,7 +5,7 @@ Two regimes:
 
 * Fuzzing: os.urandom and mutated valid inputs are pushed through every
   decoder and verification entry point. Only purecrypt's typed
-  exceptions (PureCryptError subclasses) may escape; IndexError,
+  exceptions (PureCryptError subclasses) may escape. IndexError,
   struct.error, RecursionError and friends are test failures.
 * Metamorphic/property checks that span modules: ECDH symmetry,
   ECDSA determinism, PEM/DER round-trips for every key type.
@@ -23,7 +23,7 @@ from purecrypt.exceptions import PureCryptError
 from purecrypt.rsa import RSAPrivateKey, RSAPublicKey, generate_private_key
 from purecrypt.x25519 import X25519PrivateKey
 
-_FUZZ_ITERS = 300  # per entry point; ~2000+ total across the file
+_FUZZ_ITERS = 300  # per entry point, roughly 2000+ total across the file
 
 
 def _random_bytes(max_len: int = 160) -> bytes:

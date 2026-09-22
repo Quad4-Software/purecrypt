@@ -95,7 +95,7 @@ def test_fuzz_cbc_unpad() -> None:
     rejected = 0
     for _ in range(400):
         # aligned ciphertext: decrypt is fine, padding must validate.
-        # random plaintext occasionally forms a legal pad; that is fine,
+        # random plaintext occasionally forms a legal pad. That is fine,
         # the assertion is that nothing else escapes.
         ct = os.urandom(16 * rng.randrange(1, 5))
         pt = aes.cbc_decrypt(key, iv, ct)

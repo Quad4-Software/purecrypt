@@ -7,7 +7,7 @@
    and other side-channel analysis. This package exists for education,
    testing, and environments where native crypto is unavailable and the
    threat model tolerates it. Prefer audited native implementations
-   (OpenSSL via ``cryptography``, libsodium via ``PyNaCl``) for real
+   (OpenSSL via cryptography, libsodium via PyNaCl) for real
    deployments.
 """
 

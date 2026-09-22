@@ -24,7 +24,7 @@ _P448 = 2**448 - 2**224 - 1
 
 
 def _ladder(k: int, u: int, p: int, a24: int, bits: int) -> int:
-    """RFC 7748 Montgomery ladder; variable-time Python swaps."""
+    """RFC 7748 Montgomery ladder. Variable-time Python swaps."""
     x1 = u
     x2, z2 = 1, 0
     x3, z3 = u, 1
@@ -118,7 +118,7 @@ class X25519PrivateKey:
         return X25519PublicKey(_enc=_x25519(self._scalar, b"\x09" + b"\x00" * 31))
 
     def exchange(self, peer: X25519PublicKey | bytes) -> bytes:
-        """Return the 32-byte shared secret; InvalidKey on low order."""
+        """Return the 32-byte shared secret. Raises InvalidKey on low order."""
         enc = peer.public_bytes() if isinstance(peer, X25519PublicKey) else bytes(peer)
         if len(enc) != 32:
             raise InvalidKey("X25519 peer public keys are 32 bytes")
@@ -166,7 +166,7 @@ class X448PrivateKey:
         return X448PublicKey(_enc=_x448(self._scalar, b"\x05" + b"\x00" * 55))
 
     def exchange(self, peer: X448PublicKey | bytes) -> bytes:
-        """Return the 56-byte shared secret; InvalidKey on low order."""
+        """Return the 56-byte shared secret. Raises InvalidKey on low order."""
         enc = peer.public_bytes() if isinstance(peer, X448PublicKey) else bytes(peer)
         if len(enc) != 56:
             raise InvalidKey("X448 peer public keys are 56 bytes")

@@ -21,7 +21,7 @@ Implements:
   failed") error with no distinguishable sub-case, but in pure Python
   the padding scan is unavoidably variable-time, so a determined oracle
   attacker may still extract signal. Do not use v1.5 decryption on
-  attacker-supplied ciphertext; prefer OAEP.
+  attacker-supplied ciphertext. Prefer OAEP.
 * RSAES-OAEP encrypt/decrypt with MGF1 and configurable hash/label.
   Decrypt likewise returns the single uniform InvalidKey error for every
   failure mode (bad length, bad lHash, bad separator).
@@ -259,7 +259,7 @@ class RSAPublicKey:
         """Verify RSASSA-PSS.
 
         salt_len=None recovers the salt length from the padding (like
-        pyca's PSS.AUTO); an int requires that exact length.
+        pyca's PSS.AUTO). An int requires that exact length.
         """
         k = self.key_bytes
         if len(signature) != k:
@@ -588,7 +588,7 @@ class RSAPrivateKey:
 
 
 def _parse_algorithm(node: asn1.DerNode) -> tuple[str, asn1.DerNode | None]:
-    """Parse AlgorithmIdentifier; returns (oid, params_node_or_None)."""
+    """Parse AlgorithmIdentifier. Returns (oid, params_node_or_None)."""
     kids = asn1.sequence_value(node)
     if not 1 <= len(kids) <= 2:
         raise InvalidSerialization("malformed AlgorithmIdentifier")
@@ -642,7 +642,7 @@ def _emsa_pss_verify(
         return False
     db = bytearray(xor_bytes(masked_db, mgf1(h, em_len - hlen - 1, hash_name)))
     db[0] &= 0xFF >> unused
-    # Locate the 0x01 separator scanning the whole buffer; salt follows.
+    # Locate the 0x01 separator scanning the whole buffer. Salt follows.
     sep = -1
     for i, byte in enumerate(db):
         if byte != 0 and sep < 0:

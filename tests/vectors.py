@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Published test vectors (RSA Labs PKCS#1 v2.1, RFC 5903, 6979, 7748, 8032).
 
-Generated data file; long hex literals are intentional.
+Generated data file. Long hex literals are intentional.
 """
 # ruff: noqa: E501
 

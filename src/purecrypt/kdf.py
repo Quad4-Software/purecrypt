@@ -74,7 +74,7 @@ def pbkdf2(
 ) -> bytes:
     """PBKDF2 (RFC 8018) implemented directly over HMAC.
 
-    Equivalent to hashlib.pbkdf2_hmac; implemented over pure-Python
+    Equivalent to hashlib.pbkdf2_hmac. Implemented over pure-Python
     HMAC so no OpenSSL PBKDF2 support is required.
     """
     factory = _factory(digest)
@@ -109,8 +109,8 @@ def scrypt(
 ) -> bytes:
     """scrypt (RFC 7914) via hashlib.scrypt with parameter validation.
 
-    n must be a power of two greater than 1. maxmem defaults to 64 MiB;
-    raise it for larger parameter sets.
+    n must be a power of two greater than 1. maxmem defaults to
+    64 MiB. Raise it for larger parameter sets.
     """
     if n < 2 or (n & (n - 1)) != 0:
         raise ValueError("scrypt n must be a power of two greater than 1")
@@ -401,7 +401,7 @@ def argon2id(
 ) -> bytes:
     """Argon2id with RFC 9106 second-recommendation defaults.
 
-    Default memory_cost is 64 MiB which is slow in pure Python; pass a
+    Default memory_cost is 64 MiB which is slow in pure Python. Pass a
     smaller value for tests. Salt should be at least 16 random bytes.
     """
     return argon2(

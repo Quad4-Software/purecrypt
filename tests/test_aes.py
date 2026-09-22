@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """AES tests: FIPS-197 and SP 800-38A vectors, GCM AEAD, tamper, properties.
 
-GCM inputs are the McGrew & Viega test-case inputs; expected outputs
+GCM inputs are the McGrew & Viega test-case inputs. Expected outputs
 were cross-verified against pyca/cryptography's AESGCM.
 """
 
@@ -205,7 +205,7 @@ def test_pkcs7_pad_full_block() -> None:
 def test_pkcs7_unpad_rejects_all_corruptions() -> None:
     padded = aes.pkcs7_pad(b"hello world")
     pad_len = padded[-1]
-    # corrupt each byte inside the padding region only; data bytes are
+    # corrupt each byte inside the padding region only. Data bytes are
     # unauthenticated by definition and are covered by AEAD tests
     for i in range(len(padded) - pad_len, len(padded)):
         for flip in (0x01, 0x80, 0xFF):
