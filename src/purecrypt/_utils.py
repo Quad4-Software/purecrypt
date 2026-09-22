@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Shared internals: integer/byte conversion, xor, secret hygiene.
+"""Shared internals: integer/byte conversion, xor, byte compare.
 
 Nothing here is public API.
 """
@@ -35,17 +35,3 @@ def ct_equal(a: bytes, b: bytes) -> bool:
     language offers and avoids the obvious early-exit pitfalls.
     """
     return hmac.compare_digest(a, b)
-
-
-def wipe(buf: bytearray) -> None:
-    """Best-effort overwrite of mutable secret material.
-
-    CPython may keep other copies of the data alive elsewhere. This is
-    hygiene, not a guarantee.
-    """
-    for i in range(len(buf)):
-        buf[i] = 0
-
-
-def ceil_div(a: int, b: int) -> int:
-    return -(-a // b)

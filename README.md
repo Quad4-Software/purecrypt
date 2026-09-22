@@ -64,8 +64,8 @@ verify_hostname(leaf, "example.com")
 ## Known limitations
 
 - No constant-time guarantees. Python semantics preclude them.
-- Secret zeroization is best-effort (mutable buffers are wiped where
-  practical, but interpreter copies are out of scope).
+- Secret material cannot be reliably zeroized. Interpreter copies are
+  out of scope, so no wiping is attempted.
 - RSA PKCS#1 v1.5 decryption is inherently Bleichenbacher-prone. Use
   OAEP.
 - X.509 validation covers RFC 5280 path rules and RFC 6125 hostnames,
