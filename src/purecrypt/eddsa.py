@@ -2,11 +2,15 @@
 """Ed25519 signatures per RFC 8032, plus the Ed25519ph prehash variant.
 
 NOT READY FOR PRODUCTION. Pure Python cannot provide constant-time
-guarantees: scalar multiplication and secret-dependent branches here are
-variable-time and leak through timing. This package exists for
-education, testing, and environments where native crypto is unavailable
-and the threat model tolerates it. Prefer libsodium via PyNaCl or
-OpenSSL via cryptography for real deployments.
+guarantees. Scalar multiplication here runs a fixed-iteration
+double-and-add-always ladder in extended coordinates with a
+mask-selected conditional add, which removes the obvious
+secret-dependent branches. Residual leaks remain: Python big-int
+arithmetic is variable-time, so secrets still leak through timing.
+This package exists for education, testing, and environments where
+native crypto is unavailable and the threat model tolerates it.
+Prefer libsodium via PyNaCl or OpenSSL via cryptography for real
+deployments.
 
 Verification policy (RFC 8032 section 5.1.7 with deliberate strictness):
 
@@ -25,6 +29,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 
+from ._utils import ct_equal
 from .exceptions import InvalidKey, InvalidSignature
 
 _P = 2**255 - 19
@@ -64,16 +69,57 @@ def _point_add(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int]:
     return (x3, y3)
 
 
+# Extended twisted-Edwards point (X, Y, T, Z) with x = X/Z, y = Y/Z and
+# T = XY/Z. The addition law below is complete for ed25519 (d is a
+# non-square), so it handles doubling, the identity and inverses with
+# no exceptional cases.
+_EXT_IDENTITY = (0, 1, 0, 1)
+
+# Widest scalar used here is 8 * S with S < l, which stays under 2^256.
+_SCALAR_BITS = 256
+
+
+def _ext_add(
+    p1: tuple[int, int, int, int], p2: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    """Extended twisted-Edwards addition, a = -1 (RFC 8032 point add)."""
+    x1, y1, t1, z1 = p1
+    x2, y2, t2, z2 = p2
+    a = x1 * x2 % _P
+    b = y1 * y2 % _P
+    c = _D * t1 * t2 % _P
+    d = z1 * z2 % _P
+    e = ((x1 + y1) * (x2 + y2) - a - b) % _P
+    f = (d - c) % _P
+    g = (d + c) % _P
+    h = (b + a) % _P
+    return (e * f % _P, g * h % _P, e * h % _P, f * g % _P)
+
+
 def _scalarmult(k: int, point: tuple[int, int]) -> tuple[int, int]:
-    """Plain double-and-add. Deliberately variable-time."""
-    result = _IDENTITY
-    addend = point
-    while k:
-        if k & 1:
-            result = _point_add(result, addend)
-        addend = _point_add(addend, addend)
-        k >>= 1
-    return result
+    """Fixed-iteration double-and-add-always over _SCALAR_BITS bits.
+
+    Every iteration computes both the doubling and the conditional add
+    and selects via integer mask arithmetic rather than branching on a
+    secret bit. Still not constant-time: Python int arithmetic leaks.
+    Scalars must fit in _SCALAR_BITS bits, which every in-tree caller
+    upholds.
+    """
+    px, py = point
+    pt = (px, py, px * py % _P, 1)
+    acc = _EXT_IDENTITY
+    for i in range(_SCALAR_BITS - 1, -1, -1):
+        acc = _ext_add(acc, acc)
+        cand = _ext_add(acc, pt)
+        mask = -((k >> i) & 1)
+        acc = (
+            acc[0] ^ (mask & (acc[0] ^ cand[0])),
+            acc[1] ^ (mask & (acc[1] ^ cand[1])),
+            acc[2] ^ (mask & (acc[2] ^ cand[2])),
+            acc[3] ^ (mask & (acc[3] ^ cand[3])),
+        )
+    zinv = pow(acc[3], _P - 2, _P)
+    return (acc[0] * zinv % _P, acc[1] * zinv % _P)
 
 
 def _encode_point(point: tuple[int, int]) -> bytes:
@@ -206,7 +252,7 @@ def _verify(a_enc: bytes, signature: bytes, message: bytes, ph: bool) -> None:
     a_pt = _decode_point_strict(a_enc)
     if a_pt is None:
         raise InvalidSignature("public key fails strict point decoding")
-    if _scalarmult(8, a_pt) == _IDENTITY:
+    if ct_equal(_encode_point(_scalarmult(8, a_pt)), _encode_point(_IDENTITY)):
         raise InvalidSignature("small-order public key rejected")
     r_pt = _decode_point_strict(r_enc)
     if r_pt is None:
@@ -217,5 +263,5 @@ def _verify(a_enc: bytes, signature: bytes, message: bytes, ph: bool) -> None:
     # Cofactored check: [8][S]B == [8](R + [k]A)
     lhs = _scalarmult(8 * s, _B)
     rhs = _scalarmult(8, _point_add(r_pt, _scalarmult(k, a_pt)))
-    if lhs != rhs:
+    if not ct_equal(_encode_point(lhs), _encode_point(rhs)):
         raise InvalidSignature("Ed25519 verification failed")

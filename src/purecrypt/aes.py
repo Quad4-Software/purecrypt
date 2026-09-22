@@ -216,20 +216,24 @@ def pkcs7_pad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
 def pkcs7_unpad(data: bytes, block_size: int = BLOCK_SIZE) -> bytes:
     """Remove and fully validate PKCS#7 padding.
 
-    Raises InvalidCiphertext on any malformed padding. All padding
-    bytes are checked so corrupted pads fail uniformly.
+    Raises InvalidCiphertext on any malformed padding. The final block
+    is scanned in full and pad-byte mismatches accumulate into a flag
+    rather than exiting early, so no position information leaks through
+    an early return. Still variable-time at the Python level.
     """
     if not 1 <= block_size <= 255:
         raise ValueError("block_size must be in [1, 255]")
     if len(data) == 0 or len(data) % block_size != 0:
         raise InvalidCiphertext("padded input is empty or misaligned")
     n = data[-1]
-    if n < 1 or n > block_size:
-        raise InvalidCiphertext("invalid PKCS#7 padding length")
-    pad = data[-n:]
-    for b in pad:
-        if b != n:
-            raise InvalidCiphertext("corrupt PKCS#7 padding bytes")
+    bad = int(not 1 <= n <= block_size)
+    last = data[len(data) - block_size :]
+    for i in range(block_size):
+        # Positions i >= block_size - n carry pad bytes equal to n.
+        in_pad = int(i >= block_size - n)
+        bad |= in_pad & int(last[i] != n)
+    if bad:
+        raise InvalidCiphertext("invalid PKCS#7 padding")
     return data[:-n]
 
 

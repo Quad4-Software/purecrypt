@@ -6,16 +6,16 @@
 [![PyPI](https://img.shields.io/pypi/v/purecrypt.svg)](https://pypi.org/project/purecrypt/)
 [![License: 0BSD](https://img.shields.io/badge/license-0BSD-blue)](LICENSE)
 
-> **WARNING: NOT READY FOR PRODUCTION.**
->
-> Pure Python cannot provide constant-time execution. Every operation
-> in this library is potentially vulnerable to timing and other
-> side-channel analysis, and secret material may be copied by the
-> garbage collector. This package exists for education, testing, and
-> environments where native crypto is unavailable and the threat model
-> tolerates it. For real deployments use audited native
-> implementations such as `cryptography` (OpenSSL) or `PyNaCl`
-> (libsodium).
+> **Security notice.** Pure Python cannot provide constant-time
+> execution. Secret-key operations (signing, decryption, key exchange)
+> are hardened against the obvious leaks: RSA blinding, fixed-iteration
+> scalar multiplication with mask-selected adds, uniform error paths,
+> and constant-time-style comparisons. Residual timing variance in the
+> interpreter remains, so do not run secret-key operations where a
+> co-located attacker can measure timing. Public-data operations such
+> as certificate validation and signature verification are unaffected.
+> For high-assurance deployments use audited native implementations
+> such as `cryptography` (OpenSSL) or `PyNaCl` (libsodium).
 
 Pure-Python cryptographic primitives for Python 3.10+. No
 dependencies, no Rust, no C extensions: only `hashlib`, `hmac` and
@@ -33,7 +33,10 @@ dependencies, no Rust, no C extensions: only `hashlib`, `hmac` and
 - ECDSA and ECDH over P-256, P-384, P-521 and secp256k1 (RFC 6979
   deterministic signatures)
 - RSA: key generation, PSS and PKCS#1 v1.5 signatures, OAEP and
-  PKCS#1 v1.5 encryption, PKCS#1/PKCS#8/SPKI serialization
+  PKCS#1 v1.5 encryption, PKCS#1/PKCS#8/SPKI serialization, encrypted
+  PKCS#8 (PBES2/AES-CBC)
+- X.509 certificate parsing, signature verification, RFC 5280 chain
+  validation and RFC 6125 hostname matching
 - HKDF, PBKDF2, scrypt and Argon2id
 - Minimal DER/PEM handling for key serialization
 - SHA-2, SHA-3, SHAKE, BLAKE2 and HMAC facades over hashlib
@@ -43,6 +46,7 @@ dependencies, no Rust, no C extensions: only `hashlib`, `hmac` and
 ```python
 from purecrypt.aes import gcm_decrypt, gcm_encrypt
 from purecrypt.eddsa import Ed25519PrivateKey
+from purecrypt.x509 import Certificate, validate_chain, verify_hostname
 
 key, nonce = b"k" * 32, b"n" * 12
 ct, tag = gcm_encrypt(key, nonce, b"secret", aad=b"hdr")
@@ -51,6 +55,10 @@ assert gcm_decrypt(key, nonce, ct, tag, aad=b"hdr") == b"secret"
 priv = Ed25519PrivateKey.generate()
 sig = priv.sign(b"message")
 priv.public_key().verify(sig, b"message")
+
+leaf = Certificate.from_pem(pem_text)
+validate_chain(leaf, intermediates, trust_roots)
+verify_hostname(leaf, "example.com")
 ```
 
 ## Known limitations
@@ -60,7 +68,11 @@ priv.public_key().verify(sig, b"message")
   practical, but interpreter copies are out of scope).
 - RSA PKCS#1 v1.5 decryption is inherently Bleichenbacher-prone. Use
   OAEP.
-- No X.509/TLS. That is a different and much larger problem.
+- X.509 validation covers RFC 5280 path rules and RFC 6125 hostnames,
+  but there is no revocation checking (no CRL or OCSP) and no name or
+  policy constraint enforcement. A critical extension whose semantics
+  are not enforced fails validation.
+- No TLS. That is a different and much larger problem.
 
 ## Development
 

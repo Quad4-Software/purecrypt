@@ -32,3 +32,7 @@ class UnsupportedAlgorithm(PureCryptError):
 
 class InvalidSerialization(PureCryptError, ValueError):
     """DER/PEM/ASN.1 input is malformed or has trailing garbage."""
+
+
+class InvalidCertificate(PureCryptError):
+    """An X.509 certificate or certification path failed validation."""

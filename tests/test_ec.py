@@ -5,6 +5,8 @@ Vector sources: RFC 6979 appendix A.2.5.1 (P-256/SHA-256) and RFC 5903
 sections 8.1/8.2 (P-256 and P-384 ECDH shared secrets).
 """
 
+import secrets
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -436,3 +438,41 @@ class TestMoreEdgeCases:
         )
         with pytest.raises(InvalidSerialization):
             ECPrivateKey.from_der(bad)
+
+
+class TestScalarMultLadder:
+    """The fixed-iteration Jacobian ladder must match affine math."""
+
+    def _ref_mult(self, curve: ec.Curve, k: int, point: tuple[int, int]) -> ec.Point:
+        """Independent variable-time reference double-and-add."""
+        result: ec.Point = None
+        addend: ec.Point = point
+        while k:
+            if k & 1:
+                result = ec._point_add(curve, result, addend)
+            addend = ec._point_add(curve, addend, addend)
+            k >>= 1
+        return result
+
+    @pytest.mark.parametrize("curve", CURVES, ids=lambda c: c.name)
+    def test_edge_scalars(self, curve: ec.Curve) -> None:
+        assert ec._scalar_mult(curve, 0, curve.base_point) is None
+        assert ec._scalar_mult(curve, 1, curve.base_point) == curve.base_point
+        assert ec._scalar_mult(curve, curve.n, curve.base_point) is None
+        minus = ec._scalar_mult(curve, curve.n - 1, curve.base_point)
+        assert ec._point_add(curve, minus, curve.base_point) is None
+
+    @pytest.mark.parametrize("curve", CURVES, ids=lambda c: c.name)
+    def test_matches_reference(self, curve: ec.Curve) -> None:
+        scalars = [2, 3, 255, 256, 257, curve.n - 1, curve.n // 3]
+        scalars.append(secrets.randbelow(curve.n - 1) + 1)
+        for k in scalars:
+            assert ec._scalar_mult(curve, k, curve.base_point) == self._ref_mult(
+                curve, k, curve.base_point
+            )
+
+    def test_out_of_range_scalar_rejected(self) -> None:
+        with pytest.raises(InvalidKey):
+            ec._scalar_mult(P256, P256.n + 1, P256.base_point)
+        with pytest.raises(InvalidKey):
+            ec._scalar_mult(P256, -1, P256.base_point)

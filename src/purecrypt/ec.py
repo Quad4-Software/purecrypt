@@ -2,12 +2,15 @@
 """Short-Weierstrass elliptic-curve cryptography: ECDH and ECDSA.
 
 NOT READY FOR PRODUCTION. Pure Python cannot provide constant-time
-guarantees: scalar multiplication here is a textbook double-and-add in
-affine coordinates with a modular inversion per step, which is
-maximally variable-time and leaks the scalar through timing. This
-package exists for education, testing, and environments where native
-crypto is unavailable and the threat model tolerates it. Prefer OpenSSL
-via the cryptography package for real deployments.
+guarantees. Scalar multiplication here runs a fixed-iteration
+double-and-add-always ladder in Jacobian coordinates with mask-selected
+conditional adds, which removes the obvious secret-dependent branches
+and inversion-per-bit costs. Residual leaks remain: Python big-int
+arithmetic, indexing, and garbage collection are all variable-time, so
+the scalar still leaks through timing. This package exists for
+education, testing, and environments where native crypto is unavailable
+and the threat model tolerates it. Prefer OpenSSL via the cryptography
+package for real deployments.
 
 Implements:
 
@@ -32,8 +35,8 @@ import secrets
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from . import asn1
-from ._utils import i2osp, os2ip
+from . import _pbes2, asn1
+from ._utils import ct_equal, i2osp, os2ip
 from .exceptions import (
     InvalidKey,
     InvalidSerialization,
@@ -167,12 +170,14 @@ def curve_by_oid(oid: str) -> Curve:
     raise UnsupportedAlgorithm(f"unknown curve OID {oid!r}")
 
 
-# --- point arithmetic (affine) ------------------------------------------------
+# --- point arithmetic ----------------------------------------------------------
 
 Point = tuple[int, int] | None  # None encodes the point at infinity
+_Jacobian = tuple[int, int, int]  # (X, Y, Z), Z == 0 encodes infinity
 
 
 def _point_add(curve: Curve, p1: Point, p2: Point) -> Point:
+    """Affine point addition for public-data paths (ECDSA verify)."""
     if p1 is None:
         return p2
     if p2 is None:
@@ -190,16 +195,86 @@ def _point_add(curve: Curve, p1: Point, p2: Point) -> Point:
     return (x3, y3)
 
 
+def _jdouble(curve: Curve, x: int, y: int, z: int) -> _Jacobian:
+    """Jacobian doubling (EFD dbl-2001-b). z == 0 propagates infinity."""
+    p = curve.p
+    xx = x * x % p
+    yy = y * y % p
+    yyyy = yy * yy % p
+    zz = z * z % p
+    s = (2 * ((x + yy) ** 2 - xx - yyyy)) % p
+    m = (3 * xx + curve.a * zz * zz) % p
+    t = (m * m - 2 * s) % p
+    return (t, (m * (s - t) - 8 * yyyy) % p, ((y + z) ** 2 - yy - zz) % p)
+
+
+def _jadd_mixed(
+    curve: Curve, x1: int, y1: int, z1: int, x2: int, y2: int
+) -> tuple[int, int, int, int]:
+    """Mixed Jacobian + affine add (EFD madd-2007-bl).
+
+    Returns (x, y, z, equal) where equal is 1 exactly when the affine
+    inputs coincide, which this formula cannot handle and callers patch
+    with a precomputed 2P. An infinity input (z1 == 0) yields garbage
+    that callers mask out. The generic R == -P case correctly produces
+    z == 0.
+    """
+    p = curve.p
+    zz = z1 * z1 % p
+    h = (x2 * zz - x1) % p
+    r = (2 * (y2 * z1 % p * zz - y1)) % p
+    hh = h * h % p
+    i = 4 * hh % p
+    j = h * i % p
+    v = x1 * i % p
+    x3 = (r * r - j - 2 * v) % p
+    y3 = (r * (v - x3) - 2 * y1 * j) % p
+    z3 = ((z1 + h) ** 2 - zz - hh) % p
+    return x3, y3, z3, int(h == 0 and r == 0)
+
+
 def _scalar_mult(curve: Curve, k: int, point: tuple[int, int]) -> Point:
-    """Plain LSB-first double-and-add. Deliberately variable-time."""
-    result: Point = None
-    addend: Point = point
-    while k:
-        if k & 1:
-            result = _point_add(curve, result, addend)
-        addend = _point_add(curve, addend, addend)
-        k >>= 1
-    return result
+    """Fixed-iteration double-and-add-always over the order bit length.
+
+    The loop runs exactly curve.n.bit_length() iterations regardless of
+    the scalar, always computes both the doubling and the conditional
+    add, and selects via integer mask arithmetic instead of branching on
+    secret bits. Jacobian coordinates avoid any branch on point state:
+    infinity is just Z == 0. Scalars must satisfy 0 <= k <= curve.n,
+    which every in-tree caller upholds. Still not constant-time: Python
+    int arithmetic leaks. See the module docstring.
+    """
+    if not 0 <= k <= curve.n:
+        raise InvalidKey("scalar out of range for fixed-iteration multiply")
+    p = curve.p
+    px, py = point
+    rx, ry, rz = 1, 1, 0  # accumulator starts at infinity
+    djx, djy, djz = _jdouble(curve, px, py, 1)  # 2P for the P + P case
+    for i in range(curve.n.bit_length() - 1, -1, -1):
+        bit = -((k >> i) & 1)
+        rx, ry, rz = _jdouble(curve, rx, ry, rz)
+        sx, sy, sz, equal = _jadd_mixed(curve, rx, ry, rz, px, py)
+        # Accumulator equals P: the mixed-add formula is degenerate, so
+        # substitute the precomputed 2P instead.
+        eq = -equal
+        sx ^= eq & (sx ^ djx)
+        sy ^= eq & (sy ^ djy)
+        sz ^= eq & (sz ^ djz)
+        # Accumulator is infinity: the formula yields garbage, so the
+        # sum must be P itself.
+        inf = -int(rz == 0)
+        sx ^= inf & (sx ^ px)
+        sy ^= inf & (sy ^ py)
+        sz ^= inf & (sz ^ 1)
+        # Keep the sum only when this scalar bit is set.
+        rx ^= bit & (rx ^ sx)
+        ry ^= bit & (ry ^ sy)
+        rz ^= bit & (rz ^ sz)
+    if rz == 0:
+        return None
+    zinv = pow(rz, -1, p)
+    zinv2 = zinv * zinv % p
+    return (rx * zinv2 % p, ry * zinv2 * zinv % p)
 
 
 def on_curve(curve: Curve, x: int, y: int) -> bool:
@@ -512,7 +587,19 @@ class ECPrivateKey:
     def to_sec1_pem(self) -> str:
         return encode_pem(_PEM_EC_PRIVATE, self.to_sec1_der())
 
-    def to_pkcs8_der(self) -> bytes:
+    def to_pkcs8_der(
+        self,
+        password: bytes | str | None = None,
+        *,
+        iterations: int = _pbes2.DEFAULT_ITERATIONS,
+        hash_name: str = "sha256",
+    ) -> bytes:
+        """PKCS#8 PrivateKeyInfo, or RFC 5958 EncryptedPrivateKeyInfo.
+
+        With a password the PrivateKeyInfo is wrapped in PBES2
+        (PBKDF2-HMAC plus AES-256-CBC). Without one the output is
+        byte-identical to previous releases.
+        """
         inner = asn1.encode_sequence(
             asn1.encode_integer(1),
             asn1.encode_octet_string(self.private_bytes()),
@@ -521,22 +608,48 @@ class ECPrivateKey:
             asn1.encode_oid(_OID_EC_PUBLIC_KEY),
             asn1.encode_oid(self.curve.oid),
         )
-        return asn1.encode_sequence(
+        der = asn1.encode_sequence(
             asn1.encode_integer(0), alg, asn1.encode_octet_string(inner)
         )
+        if password is not None:
+            return _pbes2.pbes2_encrypt(
+                der, password, iterations=iterations, hash_name=hash_name
+            )
+        return der
 
-    def to_pkcs8_pem(self) -> str:
+    def to_pkcs8_pem(
+        self,
+        password: bytes | str | None = None,
+        *,
+        iterations: int = _pbes2.DEFAULT_ITERATIONS,
+        hash_name: str = "sha256",
+    ) -> str:
+        if password is not None:
+            return encode_pem(
+                _pbes2.PEM_LABEL,
+                self.to_pkcs8_der(password, iterations=iterations, hash_name=hash_name),
+            )
         return encode_pem(_PEM_PRIVATE, self.to_pkcs8_der())
 
     @classmethod
-    def from_der(cls, data: bytes, curve: Curve | None = None) -> "ECPrivateKey":
-        """Parse SEC1 ECPrivateKey or PKCS#8 PrivateKeyInfo DER.
+    def from_der(
+        cls,
+        data: bytes,
+        curve: Curve | None = None,
+        password: bytes | str | None = None,
+    ) -> "ECPrivateKey":
+        """Parse SEC1, PKCS#8, or encrypted PKCS#8 (RFC 5958) DER.
 
-        For SEC1 input missing its [0] parameters field, the curve
-        argument is required.
+        EncryptedPrivateKeyInfo input is decrypted via PBES2 and
+        requires password. For SEC1 input missing its [0] parameters
+        field, the curve argument is required.
         """
         node = asn1.decode(data)
         kids = asn1.sequence_value(node)
+        if _pbes2.looks_encrypted(kids):
+            if password is None:
+                raise InvalidKey("encrypted private key requires a password")
+            return cls.from_der(_pbes2.pbes2_decrypt(data, password), curve)
         if len(kids) == 3 and kids[1].tag == asn1.TAG_SEQUENCE:
             return cls._from_pkcs8(kids)
         return cls._from_sec1(kids, curve)
@@ -571,8 +684,18 @@ class ECPrivateKey:
         return key
 
     @classmethod
-    def from_pem(cls, text: str | bytes, curve: Curve | None = None) -> "ECPrivateKey":
+    def from_pem(
+        cls,
+        text: str | bytes,
+        curve: Curve | None = None,
+        password: bytes | str | None = None,
+    ) -> "ECPrivateKey":
+        """Parse a private-key PEM. Encrypted blocks need password."""
         label, der = decode_pem(text)
+        if label == _pbes2.PEM_LABEL:
+            if password is None:
+                raise InvalidKey("encrypted private key requires a password")
+            return cls.from_der(_pbes2.pbes2_decrypt(der, password), curve)
         if label not in (_PEM_EC_PRIVATE, _PEM_PRIVATE):
             raise InvalidSerialization(f"unexpected PEM label {label!r}")
         return cls.from_der(der, curve)
@@ -599,5 +722,5 @@ def _sec1_check_public(key: ECPrivateKey, kids: tuple[asn1.DerNode, ...]) -> Non
             if len(params) != 1:
                 raise InvalidSerialization("bad SEC1 publicKey field")
             embedded = asn1.bit_string_value(params[0])
-            if embedded != key.public_key().to_sec1_bytes():
+            if not ct_equal(embedded, key.public_key().to_sec1_bytes()):
                 raise InvalidKey("SEC1 public key does not match private key")

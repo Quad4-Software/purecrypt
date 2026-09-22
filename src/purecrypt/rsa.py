@@ -2,16 +2,21 @@
 """RSA per RFC 8017 (PKCS#1 v2.2): key generation, signatures, encryption.
 
 NOT READY FOR PRODUCTION. Pure Python cannot provide constant-time
-guarantees: private-key operations here are demonstrably variable-time
-and are vulnerable to timing and potentially other side-channel
-analysis. This package exists for education, testing, and environments
-where native crypto is unavailable and the threat model tolerates it.
-Prefer OpenSSL via the cryptography package for real deployments.
+guarantees. Private-key operations apply textbook blinding (a random
+factor r^e mixed in, r^-1 factored out) and verify every CRT result
+against the public exponent before release, which blunts simple timing
+and fault-injection attacks. Residual leaks remain: Python int
+arithmetic, the modular inverse, and the CRT recombination are all
+variable-time, so the private key still leaks through timing. This
+package exists for education, testing, and environments where native
+crypto is unavailable and the threat model tolerates it. Prefer OpenSSL
+via the cryptography package for real deployments.
 
 Implements:
 
-* Probable-prime key generation (trial division + Miller-Rabin), CRT
-  components dmp1/dmq1/iqmp, default e = 65537, minimum 1024 bits.
+* Probable-prime key generation (trial division + Miller-Rabin with a
+  prime-size-scaled round table), CRT components dmp1/dmq1/iqmp,
+  default e = 65537, minimum 1024 bits.
 * RSASSA-PKCS1-v1_5 sign/verify with DigestInfo for sha1/sha224/sha256/
   sha384/sha512.
 * RSASSA-PSS sign/verify with MGF1 and configurable salt length.
@@ -26,7 +31,8 @@ Implements:
   Decrypt likewise returns the single uniform InvalidKey error for every
   failure mode (bad length, bad lHash, bad separator).
 * Serialization: PKCS#1 RSAPublicKey/RSAPrivateKey, PKCS#8
-  PrivateKeyInfo, and SubjectPublicKeyInfo, in DER and PEM.
+  PrivateKeyInfo, RFC 5958 EncryptedPrivateKeyInfo (PBES2), and
+  SubjectPublicKeyInfo, in DER and PEM.
 """
 
 import hashlib
@@ -34,19 +40,19 @@ import math
 import secrets
 from dataclasses import dataclass
 
-from . import asn1
+from . import _pbes2, asn1
 from ._utils import ct_equal, i2osp, os2ip, xor_bytes
 from .exceptions import (
     InvalidKey,
     InvalidSerialization,
     InvalidSignature,
+    PureCryptError,
     UnsupportedAlgorithm,
 )
 from .pem import decode_pem, encode_pem
 
 MIN_KEY_BITS = 1024
 DEFAULT_E = 65537
-_MR_ROUNDS = 16
 
 _OID_RSA_ENCRYPTION = "1.2.840.113549.1.1.1"
 
@@ -97,6 +103,8 @@ def _hash(name: str, data: bytes) -> bytes:
 
 def mgf1(seed: bytes, length: int, hash_name: str = "sha256") -> bytes:
     """Mask generation function (RFC 8017 B.2.1)."""
+    if length < 0:
+        raise ValueError("MGF1 length must be non-negative")
     hlen = _hash_size(hash_name)
     out = bytearray()
     for counter in range(math.ceil(length / hlen)):
@@ -121,6 +129,25 @@ def _build_small_primes() -> tuple[int, ...]:
 _SMALL_PRIMES = _build_small_primes()
 
 
+def _mr_rounds(prime_bits: int) -> int:
+    """Miller-Rabin round count scaled to the prime bit length.
+
+    The table is deliberately more conservative than the FIPS 186-5
+    minimums needed for a 2^-100 worst-case error bound: primes of
+    512..767 bits (1024..1534-bit keys) get 40 rounds, 768..1023 get
+    56, 1024 and up get 64, and anything smaller gets 64 as a defensive
+    default even though generate_private_key never produces primes
+    below 512 bits.
+    """
+    if prime_bits >= 1024:
+        return 64
+    if prime_bits >= 768:
+        return 56
+    if prime_bits >= 512:
+        return 40
+    return 64
+
+
 def _miller_rabin(n: int, rounds: int) -> bool:
     d = n - 1
     r = 0
@@ -141,7 +168,7 @@ def _miller_rabin(n: int, rounds: int) -> bool:
     return True
 
 
-def _is_probable_prime(n: int, rounds: int = _MR_ROUNDS) -> bool:
+def _is_probable_prime(n: int, rounds: int) -> bool:
     if n < 2:
         return False
     for p in _SMALL_PRIMES:
@@ -151,11 +178,12 @@ def _is_probable_prime(n: int, rounds: int = _MR_ROUNDS) -> bool:
 
 
 def _generate_prime(bits: int, e: int) -> int:
+    rounds = _mr_rounds(bits)
     while True:
         candidate = secrets.randbits(bits) | (1 << (bits - 1)) | 1
         if math.gcd(candidate - 1, e) != 1:
             continue
-        if _is_probable_prime(candidate):
+        if _is_probable_prime(candidate, rounds):
             return candidate
 
 
@@ -427,12 +455,35 @@ class RSAPrivateKey:
 
     # -- primitives ----------------------------------------------------------
 
+    def _blinding_factor(self) -> int:
+        """Uniform blinding factor in [2, n-1] coprime to n."""
+        while True:
+            r = 2 + secrets.randbelow(self.n - 2)
+            if math.gcd(r, self.n) == 1:
+                return r
+
     def _rsadp(self, c: int) -> int:
-        """Private-key operation via the Chinese Remainder Theorem."""
-        m1 = pow(c % self.p, self.dmp1, self.p)
-        m2 = pow(c % self.q, self.dmq1, self.q)
+        """Private-key operation: blinded CRT, verified before release.
+
+        The input is blinded by r^e for a fresh random r, the CRT
+        private operation runs on the blinded value, and the result is
+        unblinded by r^-1 mod n. As a fault-injection countermeasure the
+        unblinded result is checked with the public exponent
+        (m^e == c mod n) and a mismatch raises PureCryptError instead of
+        releasing a corrupted value. Best-effort only: Python int
+        arithmetic is variable-time, so this is not constant-time. See
+        the module docstring.
+        """
+        n = self.n
+        r = self._blinding_factor()
+        blinded = (c * pow(r, self.e, n)) % n
+        m1 = pow(blinded % self.p, self.dmp1, self.p)
+        m2 = pow(blinded % self.q, self.dmq1, self.q)
         h = (self.iqmp * (m1 - m2)) % self.p
-        return m2 + h * self.q
+        m = (m2 + h * self.q) * pow(r, -1, n) % n
+        if pow(m, self.e, n) != c % n:
+            raise PureCryptError("RSA private operation failed verification")
+        return m
 
     # -- signatures -----------------------------------------------------------
 
@@ -520,27 +571,64 @@ class RSAPrivateKey:
     def to_pkcs1_pem(self) -> str:
         return encode_pem(_PEM_RSA_PRIVATE, self.to_pkcs1_der())
 
-    def to_pkcs8_der(self) -> bytes:
-        """PKCS#8 PrivateKeyInfo wrapping the PKCS#1 private key."""
+    def to_pkcs8_der(
+        self,
+        password: bytes | str | None = None,
+        *,
+        iterations: int = _pbes2.DEFAULT_ITERATIONS,
+        hash_name: str = "sha256",
+    ) -> bytes:
+        """PKCS#8 PrivateKeyInfo, or RFC 5958 EncryptedPrivateKeyInfo.
+
+        With a password the PrivateKeyInfo is wrapped in PBES2
+        (PBKDF2-HMAC plus AES-256-CBC). Without one the output is
+        byte-identical to previous releases.
+        """
         alg = asn1.encode_sequence(
             asn1.encode_oid(_OID_RSA_ENCRYPTION), asn1.encode_null()
         )
-        return asn1.encode_sequence(
+        der = asn1.encode_sequence(
             asn1.encode_integer(0),
             alg,
             asn1.encode_octet_string(self.to_pkcs1_der()),
         )
+        if password is not None:
+            return _pbes2.pbes2_encrypt(
+                der, password, iterations=iterations, hash_name=hash_name
+            )
+        return der
 
-    def to_pkcs8_pem(self) -> str:
+    def to_pkcs8_pem(
+        self,
+        password: bytes | str | None = None,
+        *,
+        iterations: int = _pbes2.DEFAULT_ITERATIONS,
+        hash_name: str = "sha256",
+    ) -> str:
+        if password is not None:
+            return encode_pem(
+                _pbes2.PEM_LABEL,
+                self.to_pkcs8_der(password, iterations=iterations, hash_name=hash_name),
+            )
         return encode_pem(_PEM_PRIVATE, self.to_pkcs8_der())
 
     @classmethod
-    def from_der(cls, data: bytes) -> "RSAPrivateKey":
-        """Parse PKCS#1 RSAPrivateKey or PKCS#8 PrivateKeyInfo DER."""
+    def from_der(
+        cls, data: bytes, password: bytes | str | None = None
+    ) -> "RSAPrivateKey":
+        """Parse PKCS#1, PKCS#8, or encrypted PKCS#8 (RFC 5958) DER.
+
+        EncryptedPrivateKeyInfo input is decrypted via PBES2 and
+        requires password. All other inputs ignore it.
+        """
         node = asn1.decode(data)
         children = asn1.sequence_value(node)
         if len(children) == 9:
             return cls._from_pkcs1_children(children)
+        if _pbes2.looks_encrypted(children):
+            if password is None:
+                raise InvalidKey("encrypted private key requires a password")
+            return cls.from_der(_pbes2.pbes2_decrypt(data, password))
         return cls._from_pkcs8_children(children)
 
     @classmethod
@@ -577,8 +665,15 @@ class RSAPrivateKey:
         return cls._from_pkcs1_children(inner_kids)
 
     @classmethod
-    def from_pem(cls, text: str | bytes) -> "RSAPrivateKey":
+    def from_pem(
+        cls, text: str | bytes, password: bytes | str | None = None
+    ) -> "RSAPrivateKey":
+        """Parse a private-key PEM. Encrypted blocks need password."""
         label, der = decode_pem(text)
+        if label == _pbes2.PEM_LABEL:
+            if password is None:
+                raise InvalidKey("encrypted private key requires a password")
+            return cls.from_der(_pbes2.pbes2_decrypt(der, password))
         if label not in (_PEM_RSA_PRIVATE, _PEM_PRIVATE):
             raise InvalidSerialization(f"unexpected PEM label {label!r}")
         return cls.from_der(der)
@@ -686,7 +781,10 @@ def _eme_oaep_decode(em: bytes, hash_name: str, label: bytes) -> bytes | None:
     masked_db = em[1 + hlen :]
     seed = xor_bytes(masked_seed, mgf1(masked_db, hlen, hash_name))
     db = xor_bytes(masked_db, mgf1(seed, len(em) - hlen - 1, hash_name))
-    ok = em[0] == 0 and ct_equal(db[:hlen], _hash(hash_name, label))
+    # Accumulate a validity flag over the whole buffer so nothing exits
+    # early on secret-dependent position data.
+    ok = int(em[0] == 0)
+    ok &= int(ct_equal(db[:hlen], _hash(hash_name, label)))
     sep = -1
     for i in range(hlen, len(db)):
         if db[i] != 0 and sep < 0:

@@ -18,6 +18,7 @@ from purecrypt.exceptions import (
     InvalidKey,
     InvalidSerialization,
     InvalidSignature,
+    PureCryptError,
     UnsupportedAlgorithm,
 )
 from tests.vectors import (
@@ -437,6 +438,64 @@ class TestEdgeCases:
         out = rsa.mgf1(b"seed", 100, "sha256")
         assert len(out) == 100
         assert rsa.mgf1(b"seed", 32, "sha1") == rsa.mgf1(b"seed", 32, "sha1")
+        with pytest.raises(ValueError, match="non-negative"):
+            rsa.mgf1(b"seed", -1)
+
+
+class TestBlindingAndFaultCheck:
+    def test_blinded_private_op_matches_plain(
+        self, fresh_key: rsa.RSAPrivateKey
+    ) -> None:
+        # The blinded CRT path must agree with the plain schoolbook
+        # private exponentiation on arbitrary inputs.
+        for _ in range(10):
+            c = secrets.randbelow(fresh_key.n)
+            assert fresh_key._rsadp(c) == pow(c, fresh_key.d, fresh_key.n)
+
+    def test_blinding_factor_actually_used(
+        self, fresh_key: rsa.RSAPrivateKey, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[int] = []
+        real = secrets.randbelow
+
+        def spy(bound: int) -> int:
+            calls.append(bound)
+            return real(bound)
+
+        monkeypatch.setattr(secrets, "randbelow", spy)
+        fresh_key.sign_v15(b"m")
+        assert calls == [fresh_key.n - 2]
+
+    def test_blinding_gcd_retry(
+        self, fresh_key: rsa.RSAPrivateKey, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A factor of n must be rejected and re-drawn.
+        draws = iter([fresh_key.p, 17])
+        monkeypatch.setattr(secrets, "randbelow", lambda _n: next(draws))
+        assert fresh_key._rsadp(12345) == pow(12345, fresh_key.d, fresh_key.n)
+
+    def test_crt_fault_detected(self, fresh_key: rsa.RSAPrivateKey) -> None:
+        # A corrupted CRT coefficient must be caught by the public-key
+        # verification step instead of releasing a bad result.
+        original = fresh_key.iqmp
+        object.__setattr__(fresh_key, "iqmp", (original + 1) % fresh_key.p)
+        try:
+            with pytest.raises(PureCryptError):
+                fresh_key._rsadp(12345)
+        finally:
+            object.__setattr__(fresh_key, "iqmp", original)
+
+
+class TestMrRoundsTable:
+    @pytest.mark.parametrize(
+        ("bits", "rounds"),
+        [(512, 40), (767, 40), (768, 56), (1023, 56), (1024, 64), (2048, 64)],
+    )
+    def test_table(self, bits: int, rounds: int) -> None:
+        assert rsa._mr_rounds(bits) == rounds
+
+    def test_small_prime_defensive_default(self) -> None:
+        assert rsa._mr_rounds(256) == 64
 
 
 def _reenc(node: asn1.DerNode) -> bytes:

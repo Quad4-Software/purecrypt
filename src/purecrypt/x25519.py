@@ -2,11 +2,12 @@
 """X25519 and X448 Diffie-Hellman per RFC 7748.
 
 NOT READY FOR PRODUCTION. Pure Python cannot provide constant-time
-guarantees: the Montgomery ladder below uses Python conditional swaps,
-which are data-dependent branches and leak the scalar through timing.
-This package exists for education, testing, and environments where
-native crypto is unavailable and the threat model tolerates it. Prefer
-OpenSSL via the cryptography package for real deployments.
+guarantees. The Montgomery ladder below uses mask-arithmetic swaps
+rather than branches on scalar bits, but Python big-int arithmetic is
+still variable-time and the scalar leaks through timing. This package
+exists for education, testing, and environments where native crypto is
+unavailable and the threat model tolerates it. Prefer OpenSSL via the
+cryptography package for real deployments.
 
 Both functions clamp the scalar per RFC 7748, accept non-canonical
 u-coordinates (the top bit is masked for X25519), and reject an all-zero
@@ -17,14 +18,26 @@ shared-secret output, which indicates a low-order peer point
 import secrets
 from dataclasses import dataclass
 
+from ._utils import ct_equal
 from .exceptions import InvalidKey
 
 _P25519 = 2**255 - 19
 _P448 = 2**448 - 2**224 - 1
 
 
+def _cswap(swap: int, a: int, b: int) -> tuple[int, int]:
+    """Conditional swap via mask arithmetic. swap must be 0 or 1.
+
+    Best-effort only: mask = -swap gives all-ones semantics under
+    Python's two's-complement bitwise ops, but int timing still varies.
+    """
+    mask = -swap
+    dummy = mask & (a ^ b)
+    return a ^ dummy, b ^ dummy
+
+
 def _ladder(k: int, u: int, p: int, a24: int, bits: int) -> int:
-    """RFC 7748 Montgomery ladder. Variable-time Python swaps."""
+    """RFC 7748 Montgomery ladder with branch-free conditional swaps."""
     x1 = u
     x2, z2 = 1, 0
     x3, z3 = u, 1
@@ -32,9 +45,8 @@ def _ladder(k: int, u: int, p: int, a24: int, bits: int) -> int:
     for t in range(bits - 1, -1, -1):
         kt = (k >> t) & 1
         swap ^= kt
-        if swap:
-            x2, x3 = x3, x2
-            z2, z3 = z3, z2
+        x2, x3 = _cswap(swap, x2, x3)
+        z2, z3 = _cswap(swap, z2, z3)
         swap = kt
         aa = (x2 + z2) ** 2 % p
         bb = (x2 - z2) ** 2 % p
@@ -45,9 +57,8 @@ def _ladder(k: int, u: int, p: int, a24: int, bits: int) -> int:
         z3 = x1 * ((da - cb) ** 2) % p
         x2 = aa * bb % p
         z2 = e * (aa + a24 * e) % p
-    if swap:
-        x2, x3 = x3, x2
-        z2, z3 = z3, z2
+    x2, x3 = _cswap(swap, x2, x3)
+    z2, z3 = _cswap(swap, z2, z3)
     return x2 * pow(z2, p - 2, p) % p
 
 
@@ -72,7 +83,7 @@ def _x448(scalar: bytes, u_bytes: bytes) -> bytes:
 
 def _check_shared(shared: bytes) -> bytes:
     """Reject all-zero outputs (low-order peer point, RFC 7748 6.1/6.2)."""
-    if not any(shared):
+    if ct_equal(shared, bytes(len(shared))):
         raise InvalidKey("low-order peer point: all-zero shared secret")
     return shared
 
