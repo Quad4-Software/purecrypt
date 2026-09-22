@@ -25,7 +25,7 @@ def xor_bytes(a: bytes, b: bytes) -> bytes:
     """XOR two equal-length byte strings."""
     if len(a) != len(b):
         raise ValueError("xor operands differ in length")
-    return bytes(x ^ y for x, y in zip(a, b))
+    return bytes(x ^ y for x, y in zip(a, b, strict=True))
 
 
 def ct_equal(a: bytes, b: bytes) -> bool:

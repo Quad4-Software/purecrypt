@@ -1,38 +1,70 @@
-# python-library-template
+# purecrypt
 
-[![CI](https://github.com/Quad4-Software/python-library-template/actions/workflows/ci.yml/badge.svg)](https://github.com/Quad4-Software/python-library-template/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Quad4-Software/python-library-template/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Quad4-Software/python-library-template)
+[![CI](https://github.com/Quad4-Software/purecrypt/actions/workflows/ci.yml/badge.svg)](https://github.com/Quad4-Software/purecrypt/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Quad4-Software/purecrypt/actions/workflows/codeql.yml/badge.svg)](https://github.com/Quad4-Software/purecrypt/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Quad4-Software/purecrypt/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Quad4-Software/purecrypt)
+[![PyPI](https://img.shields.io/pypi/v/purecrypt.svg)](https://pypi.org/project/purecrypt/)
 [![License: 0BSD](https://img.shields.io/badge/license-0BSD-blue)](LICENSE)
 
-Quad4 template for dependency-free typed Python libraries.
+> **WARNING: NOT READY FOR PRODUCTION.**
+>
+> Pure Python cannot provide constant-time execution. Every operation
+> in this library is potentially vulnerable to timing and other
+> side-channel analysis, and secret material may be copied by the
+> garbage collector. This package exists for education, testing, and
+> environments where native crypto is unavailable and the threat model
+> tolerates it. For real deployments use audited native
+> implementations such as `cryptography` (OpenSSL) or `PyNaCl`
+> (libsodium).
+
+Pure-Python cryptographic primitives for Python 3.10+. No
+dependencies, no Rust, no C extensions: only `hashlib`, `hmac` and
+`secrets` from the standard library.
+
+## Install
+
+    pip install purecrypt
 
 ## Contents
 
-- `src/` layout with Hatchling, dynamic version from `__init__.py`
-- Fully typed, `py.typed` shipped, mypy strict over `src` and `tests`
-- ruff lint + format, bandit, pytest
-- `make check` runs the full local gate
-- GitHub Actions: CI matrix 3.10-3.14, CodeQL, OpenSSF Scorecard with SARIF
-  upload, zizmor, dependency review, tag-triggered PyPI release with build
-  provenance and attestations
-- All actions pinned to commit SHAs, least-privilege permissions,
-  `step-security/harden-runner` on every job, Dependabot with 7-day cooldown
+- AES-128/192/256 with ECB, CBC, CTR and GCM (AEAD)
+- ChaCha20, Poly1305, ChaCha20-Poly1305 and XChaCha20-Poly1305
+- Ed25519 signatures and X25519 key exchange
+- ECDSA and ECDH over P-256, P-384, P-521 and secp256k1 (RFC 6979
+  deterministic signatures)
+- RSA: key generation, PSS and PKCS#1 v1.5 signatures, OAEP and
+  PKCS#1 v1.5 encryption, PKCS#1/PKCS#8/SPKI serialization
+- HKDF, PBKDF2, scrypt and Argon2id
+- Minimal DER/PEM handling for key serialization
+- SHA-2, SHA-3, SHAKE, BLAKE2 and HMAC facades over hashlib
 
-## Using this template
+## Example
 
-1. Create a repository from this template (GitHub "Use this template" button)
-   or copy the tree.
-2. Rename the package:
+```python
+from purecrypt.aes import gcm_decrypt, gcm_encrypt
+from purecrypt.eddsa import Ed25519PrivateKey
 
-   ```sh
-   mv src/packagename src/mypkg
-   mv tests/test_packagename.py tests/test_mypkg.py
-   grep -rl packagename . | xargs sed -i 's/packagename/mypkg/g'
-   ```
+key, nonce = b"k" * 32, b"n" * 12
+ct, tag = gcm_encrypt(key, nonce, b"secret", aad=b"hdr")
+assert gcm_decrypt(key, nonce, ct, tag, aad=b"hdr") == b"secret"
 
-3. Update `pyproject.toml`: description, keywords, classifiers, repository URL.
-4. Update `SECURITY.md` if the contact address differs.
-5. For releases, configure a PyPI trusted publisher for the repository
-   (workflow `release.yml`, environment `pypi`), then tag `v*` to publish.
+priv = Ed25519PrivateKey.generate()
+sig = priv.sign(b"message")
+priv.public_key().verify(sig, b"message")
+```
 
-License: 0BSD.
+## Known limitations
+
+- No constant-time guarantees; Python semantics preclude them.
+- Secret zeroization is best-effort (mutable buffers are wiped where
+  practical, but interpreter copies are out of scope).
+- RSA PKCS#1 v1.5 decryption is inherently Bleichenbacher-prone; use
+  OAEP.
+- No X.509/TLS. That is a different and much larger problem.
+
+## Development
+
+    uv sync --group dev
+    make check
+
+License: 0BSD. Quad4 Software, https://quad4.io

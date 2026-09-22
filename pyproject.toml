@@ -37,6 +37,8 @@ dev = [
     "ruff>=0.16.8",
     "bandit>=1.9.4",
     "mypy>=2.3.1",
+    "hypothesis>=6.168.0",
+    "ty>=0.0.83",
 ]
 
 [tool.ruff]
@@ -85,6 +87,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S603"]
+# Names intentionally mirror the cryptography package's exception API.
+"src/purecrypt/exceptions.py" = ["N818"]
 
 [tool.mypy]
 strict = true
