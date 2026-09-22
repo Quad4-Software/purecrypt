@@ -23,9 +23,9 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://quad4.io"
-Repository = "https://github.com/Quad4-Software/python-library-template"
-Issues = "https://github.com/Quad4-Software/python-library-template/issues"
-Changelog = "https://github.com/Quad4-Software/python-library-template/blob/master/CHANGELOG.md"
+Repository = "https://github.com/Quad4-Software/purecrypt"
+Issues = "https://github.com/Quad4-Software/purecrypt/issues"
+Changelog = "https://github.com/Quad4-Software/purecrypt/blob/master/CHANGELOG.md"
 
 [tool.hatch.version]
 path = "src/purecrypt/__init__.py"
