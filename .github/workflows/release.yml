@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/packagename
+      url: https://pypi.org/p/purecrypt
     permissions:
       contents: write
       id-token: write
@@ -34,7 +34,7 @@ jobs:
       - name: Verify tag matches package version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          version="$(uv run python -c 'import packagename; print(packagename.__version__)')"
+          version="$(uv run python -c 'import purecrypt; print(purecrypt.__version__)')"
           if [ "$tag" != "$version" ]; then
             echo "tag $tag does not match package version $version" >&2
             exit 1

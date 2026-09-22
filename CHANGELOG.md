@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.1] - Unreleased
+
+Fix the release workflow's package-name placeholder. No library
+changes.
+
 ## [0.1.0] - Unreleased
 
 Initial release. Pure-Python primitives with no dependencies and no

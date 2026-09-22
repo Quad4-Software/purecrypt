@@ -13,7 +13,7 @@
    implementations (OpenSSL via cryptography, libsodium via PyNaCl).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .exceptions import (
     InvalidCertificate,
