@@ -686,7 +686,7 @@ class TestChains:
 
     def test_issuer_without_ca_flag(self) -> None:
         # plain_root has no basicConstraints but asserts a keyUsage
-        # without keyCertSign; openssl rejects it the same way.
+        # without keyCertSign. openssl rejects it the same way.
         with pytest.raises(InvalidCertificate, match="keyCertSign"):
             validate_chain(load("plain_leaf"), [], [load("plain_root")])
 
@@ -695,7 +695,7 @@ class TestChains:
             validate_chain(load("ku_leaf"), [], [load("ku_root")])
 
     def test_leaf_without_digital_signature(self, rsa_chain: Chain) -> None:
-        # openssl accepts this; the strict leaf rule is documented.
+        # openssl accepts this. The strict leaf rule is documented.
         with pytest.raises(InvalidCertificate, match="digitalSignature"):
             validate_chain(load("rsa_leaf_nods"), [rsa_chain[1]], [rsa_chain[2]])
 
@@ -734,7 +734,7 @@ class TestChains:
         assert verify_hostname(leaf, "critsan.example.com")
 
     def test_v1_trust_anchor(self) -> None:
-        # A version-1 anchor carries no extensions; its CA status comes
+        # A version-1 anchor carries no extensions. Its CA status comes
         # from the trust store, not basicConstraints.
         chain = validate_chain(load("v1_leaf"), [], [load("v1_root")])
         assert len(chain) == 2

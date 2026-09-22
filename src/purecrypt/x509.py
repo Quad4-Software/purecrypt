@@ -1060,7 +1060,7 @@ def _check_ca(
     if bc is None:
         # Intermediates must carry cA=TRUE. A trust anchor that asserts
         # nothing (v1 or extensionless) is trusted by fiat, matching
-        # openssl; an anchor that does carry basicConstraints or
+        # openssl. An anchor that does carry basicConstraints or
         # keyUsage must still satisfy them.
         if not anchor:
             raise InvalidCertificate("issuer lacks basicConstraints cA=TRUE")
@@ -1090,7 +1090,7 @@ def validate_chain(
     (basicConstraints cA=TRUE, keyCertSign when keyUsage is present,
     pathLenConstraint), and digitalSignature in the leaf keyUsage when
     the leaf is not itself a CA. A self-signed trust anchor gets a
-    self-signature sanity check; its trust still comes from the store.
+    self-signature sanity check. Its trust still comes from the store.
     """
     chain = build_chain(leaf, intermediates, trust_roots, allow_weak=allow_weak)
     if moment is None:
@@ -1176,7 +1176,7 @@ def verify_hostname(cert: Certificate, hostname: str) -> bool:
     """RFC 6125 hostname verification.
 
     IP addresses match only iPAddress SANs. DNS names match dNSName
-    SANs when a SAN extension is present; only when the certificate
+    SANs when a SAN extension is present. Only when the certificate
     has no SAN extension at all does the subject CN apply, which real
     world certificates still rely on. Wildcards are limited to a
     complete leftmost label.
