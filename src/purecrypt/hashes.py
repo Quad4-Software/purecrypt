@@ -19,13 +19,21 @@ class HashLike(Protocol):
     """Structural type for hashlib hash objects."""
 
     @property
-    def digest_size(self) -> int: ...
-    @property
-    def block_size(self) -> int: ...
+    def digest_size(self) -> int:
+        pass
 
-    def update(self, data: bytes, /) -> None: ...
-    def digest(self) -> bytes: ...
-    def copy(self) -> HashLike: ...
+    @property
+    def block_size(self) -> int:
+        pass
+
+    def update(self, data: bytes, /) -> None:
+        pass
+
+    def digest(self) -> bytes:
+        pass
+
+    def copy(self) -> HashLike:
+        pass
 
 
 HashFactory: TypeAlias = Callable[[bytes], HashLike]
