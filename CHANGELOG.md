@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+- BLAKE3: one-shot and incremental hashing, keyed hashing, key
+  derivation, and seekable XOF output. Validated against the official
+  BLAKE3 test vectors.
+- ML-KEM-512/768/1024 key encapsulation (FIPS 203) with implicit
+  rejection and key-consistency checks. Validated against the NIST
+  ACVP ML-KEM FIPS 203 vectors.
+- Reticulum Token wire-format tests and a differential test suite
+  against the cryptography package (AES, ChaCha20-Poly1305, Ed25519,
+  X25519, ECDSA/ECDH, RSA, HKDF, PBKDF2, scrypt, hashes, HMAC).
+- ML-DSA (FIPS 204) is not yet implemented.
+
 ## [0.1.1] - Unreleased
 
 Fix the release workflow's package-name placeholder. No library

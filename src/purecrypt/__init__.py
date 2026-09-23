@@ -15,6 +15,7 @@
 
 __version__ = "0.1.1"
 
+from . import blake3, mlkem
 from .exceptions import (
     InvalidCertificate,
     InvalidCiphertext,
@@ -36,4 +37,6 @@ __all__ = [
     "PureCryptError",
     "UnsupportedAlgorithm",
     "__version__",
+    "blake3",
+    "mlkem",
 ]
