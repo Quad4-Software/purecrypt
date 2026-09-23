@@ -39,6 +39,7 @@ dependencies, no Rust, no C extensions: only `hashlib`, `hmac` and
   validation and RFC 6125 hostname matching
 - HKDF, PBKDF2, scrypt and Argon2id
 - ML-KEM-512/768/1024 key encapsulation (FIPS 203)
+- ML-DSA-44/65/87 signatures including HashML-DSA (FIPS 204)
 - Minimal DER/PEM handling for key serialization
 - SHA-2, SHA-3, SHAKE, BLAKE2 and HMAC facades over hashlib
 - BLAKE3 hashing, keyed hashing, key derivation and XOF output

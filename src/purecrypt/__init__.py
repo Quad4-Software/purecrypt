@@ -15,7 +15,7 @@
 
 __version__ = "0.1.1"
 
-from . import blake3, mlkem
+from . import blake3, mldsa, mlkem
 from .exceptions import (
     InvalidCertificate,
     InvalidCiphertext,
@@ -38,5 +38,6 @@ __all__ = [
     "UnsupportedAlgorithm",
     "__version__",
     "blake3",
+    "mldsa",
     "mlkem",
 ]
